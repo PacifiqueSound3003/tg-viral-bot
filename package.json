@@ -1,0 +1,16 @@
+{
+  "name": "tg-viral-bot",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "watcher": "node src/payment_watcher.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "pg": "^8.11.5",
+    "dotenv": "^16.4.5",
+    "axios": "^1.6.8"
+  }
+}
