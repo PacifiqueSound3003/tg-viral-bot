@@ -112,7 +112,6 @@ function kbHomeUser(refLink, eligible) {
     return Markup.inlineKeyboard([
       [Markup.button.callback("👥 Inviter 3 personnes", "PAGE_REF")],
       [Markup.button.callback("💳 Payer 3$ (USDT)", "PAGE_PAY")],
-      [Markup.button.url("📤 Partager mon lien", shareLink(refLink))],
       [Markup.button.callback("❓ FAQ", "PAGE_FAQ")],
       [Markup.button.callback("📩 Contact Team", "PAGE_CONTACT")]
     ]);
@@ -120,7 +119,6 @@ function kbHomeUser(refLink, eligible) {
 
   return Markup.inlineKeyboard([
     [Markup.button.callback("🔐 Générer le lien du groupe", "ACTION_ACCESS")],
-    [Markup.button.url("📤 Partager mon lien", shareLink(refLink))],
     [Markup.button.callback("ℹ️ Infos", "PAGE_INFO")],
     [Markup.button.callback("❓ FAQ", "PAGE_FAQ")],
     [Markup.button.callback("📩 Contact Team", "PAGE_CONTACT")]
@@ -133,12 +131,15 @@ function kbBackToHome() {
 
 function kbAdmin() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback("📊 Statistiques", "ADMIN_STATS")],
-    [Markup.button.callback("📌 Binder PRINCIPAL", "ADMIN_BIND_MAIN_HELP")],
-    [Markup.button.callback("🛟 Binder BACKUP", "ADMIN_BIND_BACKUP_HELP")],
-    [Markup.button.callback("🔁 Basculer vers BACKUP", "ADMIN_SWITCH_BACKUP")],
+    [Markup.button.callback("📌 Binder PRINCIPAL", "ADMIN_BIND_MAIN_HELP"),
+     Markup.button.callback("🛟 Binder BACKUP", "ADMIN_BIND_BACKUP_HELP")],
+
+    [Markup.button.callback("🔁 Basculer vers BACKUP", "ADMIN_SWITCH_BACKUP"),
+     Markup.button.callback("👀 Voir config", "ADMIN_CONFIG")],
+
     [Markup.button.callback("↩️ Revenir au PRINCIPAL", "ADMIN_SWITCH_MAIN")],
-    [Markup.button.callback("👀 Voir config", "ADMIN_CONFIG")]
+
+    [Markup.button.callback("📊 Statistiques", "ADMIN_STATS")]
   ]);
 }
 
@@ -667,3 +668,4 @@ bot.launch()
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
