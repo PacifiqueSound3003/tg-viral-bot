@@ -859,6 +859,147 @@ bot.catch((err, ctx) => {
   } catch {}
 });
 
+// ---------- Si modification le faire a partir d'ici ----------
+const TRONSCAN_BASE = process.env.TRONSCAN_BASE || "https://apilist.tronscanapi.com";
+const TRONSCAN_API_KEY = process.env.TRONSCAN_API_KEY || "";
+const USDT_CONTRACT_TRON =
+  process.env.USDT_CONTRACT_TRON || "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+
+const PAY_WATCH_INTERVAL_SEC = Number(process.env.PAY_WATCH_INTERVAL_SEC || 20);
+const PAY_CONFIRM_MIN = Number(process.env.PAY_CONFIRM_MIN || 1);
+
+function toSunUSDT(amountStr) {
+  // USDT TRC20 = 6 decimals
+  const [a, b = ""] = String(amountStr).split(".");
+  const frac = (b + "000000").slice(0, 6);
+  return BigInt(a) * 1000000n + BigInt(frac);
+}
+
+async function fetchTrc20TransfersLatest(addressBase58, limit = 50) {
+  // Endpoint TronScan courant pour TRC20 transfers
+  // Note: Selon TronScan, le JSON peut être { data: [...] } ou { token_transfers: [...] }
+  const url =
+    `${TRONSCAN_BASE}/api/token_trc20/transfers` +
+    `?limit=${limit}&start=0&sort=-timestamp&relatedAddress=${encodeURIComponent(addressBase58)}`;
+
+  const headers = {};
+  if (TRONSCAN_API_KEY) headers["TRON-PRO-API-KEY"] = TRONSCAN_API_KEY;
+
+  const { data } = await axios.get(url, { headers, timeout: 15000 });
+  return data?.data || data?.token_transfers || data?.transfers || [];
+}
+
+function pickFields(t) {
+  // Normalise un peu les champs TronScan (varie selon endpoint)
+  const tokenId =
+    t?.tokenInfo?.tokenId ||
+    t?.tokenInfo?.address ||
+    t?.contract_address ||
+    t?.contractAddress ||
+    "";
+
+  const toAddr = t?.to_address || t?.toAddress || t?.to || t?.recipient || "";
+  const fromAddr = t?.from_address || t?.fromAddress || t?.from || t?.sender || "";
+
+  const ts =
+    Number(t?.block_ts || t?.timestamp || t?.transferTime || t?.time || 0);
+
+  const tx =
+    t?.transaction_id || t?.hash || t?.transactionHash || t?.transactionId || null;
+
+  // Amount: parfois "quant" (sun), parfois "amount_str"/"amount"
+  const quant = t?.quant ?? t?.amount_in_sun ?? null;
+  const amountStr = t?.amount_str ?? t?.amount ?? t?.value ?? null;
+
+  const conf =
+    Number(t?.confirmations || t?.confirmation || 0);
+
+  // status: parfois "finalResult" / "contractRet" / "result"
+  const status =
+    (t?.finalResult || t?.contractRet || t?.result || "").toString().toUpperCase();
+
+  return { tokenId, toAddr, fromAddr, ts, tx, quant, amountStr, conf, status };
+}
+
+async function autoConfirmPayments() {
+  if (!USDT_ADDRESS_TRC20) return;
+
+  // 1) pending payments (non expirés)
+  const pending = await q(
+    `select id, tg_id, expected_amount, created_at
+     from payments
+     where status='pending' and expires_at > now()
+     order by created_at asc
+     limit 200`
+  );
+  if (!pending.rowCount) return;
+
+  // 2) fetch latest transfers once
+  const transfers = await fetchTrc20TransfersLatest(USDT_ADDRESS_TRC20, 60);
+
+  // 3) loop pending
+  for (const p of pending.rows) {
+    const expectedSun = toSunUSDT(p.expected_amount);
+    const createdTs = new Date(p.created_at).getTime();
+
+    const hit = transfers.find((raw) => {
+      const t = pickFields(raw);
+
+      // Must be USDT contract
+      if (t.tokenId && t.tokenId !== USDT_CONTRACT_TRON) return false;
+
+      // Must be incoming to our address
+      if (t.toAddr && t.toAddr !== USDT_ADDRESS_TRC20) return false;
+
+      // Must be after payment creation
+      if (t.ts && t.ts < createdTs) return false;
+
+      // Confirmations if available
+      if (PAY_CONFIRM_MIN > 0 && t.conf && t.conf < PAY_CONFIRM_MIN) return false;
+
+      // If status is provided and not success, ignore
+      if (t.status && t.status.includes("FAIL")) return false;
+
+      // Amount match
+      if (t.quant != null) {
+        try { return BigInt(t.quant) === expectedSun; } catch { return false; }
+      }
+      if (t.amountStr != null) {
+        const s = String(t.amountStr);
+        if (s.includes(".")) return toSunUSDT(s) === expectedSun;
+        try { return BigInt(s) === expectedSun; } catch { return false; }
+      }
+      return false;
+    });
+
+    if (!hit) continue;
+
+    const txHash =
+      hit?.transaction_id || hit?.hash || hit?.transactionHash || null;
+
+    // 4) confirm
+    await q(
+      "update payments set status='confirmed', tx_hash=$2 where id=$1",
+      [p.id, txHash]
+    );
+
+    // 5) notify user
+    try {
+      await bot.telegram.sendMessage(
+        p.tg_id,
+        `✅ Paiement confirmé (${p.expected_amount} USDT).\nTu peux maintenant cliquer “🔄 Rejoindre le groupe”.`
+      );
+    } catch {}
+  }
+}
+
+// 6) run loop
+setInterval(() => {
+  autoConfirmPayments().catch((e) =>
+    console.error("autoConfirmPayments:", e?.response?.data || e?.message || e)
+  );
+}, PAY_WATCH_INTERVAL_SEC * 1000);
+
 // ---------- Run ----------
 bot
   .launch()
@@ -867,3 +1008,4 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
