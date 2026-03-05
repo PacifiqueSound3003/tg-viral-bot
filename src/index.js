@@ -661,6 +661,16 @@ bot.action("ADMIN_SWITCH_MAIN", async (ctx) => {
   ]));
 });
 
+bot.catch((err, ctx) => {
+  console.error("BOT ERROR:", err);
+  // Essayez de répondre proprement quand c’est une callback
+  try {
+    if (ctx?.updateType === "callback_query") {
+      return ctx.answerCbQuery("⚠️ Erreur interne. Vérifie la config DB/settings.", { show_alert: true });
+    }
+  } catch {}
+});
+
 // --- Run ---
 bot.launch()
   .then(() => console.log("Bot running (polling)"))
@@ -668,4 +678,5 @@ bot.launch()
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
