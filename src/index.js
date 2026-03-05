@@ -9,6 +9,7 @@
 import "dotenv/config";
 import { Telegraf, Markup } from "telegraf";
 import { q, getSetting, setSetting } from "./db.js";
+import axios from "axios";
 import { makeRefCode, nowPlusMinutes, isDeletedUser, shareLink } from "./utils.js";
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -1008,4 +1009,5 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
