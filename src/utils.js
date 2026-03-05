@@ -1,15 +1,24 @@
+import crypto from "crypto";
+
+// code referral court, stable, URL-safe
 export function makeRefCode() {
-  return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+  // 10 chars environ
+  return crypto.randomBytes(8).toString("base64url").slice(0, 10);
 }
+
 export function nowPlusMinutes(min) {
-  return new Date(Date.now() + min * 60 * 1000);
+  return new Date(Date.now() + Number(min) * 60_000);
 }
-export function isDeletedUser(tgUser) {
-  const fn = (tgUser?.first_name || "").toLowerCase();
-  return fn.includes("deleted");
+
+// Telegram peut renvoyer {first_name:"Deleted Account"} ou sans nom
+export function isDeletedUser(u) {
+  const fn = (u?.first_name || "").toLowerCase();
+  const un = (u?.username || "").toLowerCase();
+  return fn.includes("deleted") || un.includes("deleted");
 }
-export function shareLink(refLink) {
-  const text = encodeURIComponent("🔗 Rejoins via mon lien (et clique Start) :");
-  const url = encodeURIComponent(refLink);
-  return `https://t.me/share/url?url=${url}&text=${text}`;
+
+// Génère une URL de partage Telegram avec texte + lien
+export function shareLink(url) {
+  const text = `Rejoins-moi ici 👉 ${url}`;
+  return `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
 }
