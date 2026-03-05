@@ -829,6 +829,55 @@ bot.action(["CONTACT_REC", "CONTACT_COLLAB", "CONTACT_BUG"], async (ctx) => {
   return promptContactText(ctx, ctx.callbackQuery.data);
 });
 
+bot.command("give_ref", async (ctx) => {
+  if (!isAdmin(ctx)) return;
+
+  const parts = ctx.message.text.split(" ");
+
+  if (parts.length < 3) {
+    return ctx.reply("Usage:\n/give_ref <tg_id> <nombre>");
+  }
+
+  const tgId = Number(parts[1]);
+  const count = Number(parts[2]);
+
+  if (!tgId || !count) {
+    return ctx.reply("Paramètres invalides.");
+  }
+
+  for (let i = 0; i < count; i++) {
+    const fakeUser = Math.floor(Math.random() * 1e12);
+
+    try {
+      await q(
+        `insert into referrals (referrer_tg_id, referred_tg_id)
+         values ($1,$2)
+         on conflict do nothing`,
+        [tgId, fakeUser]
+      );
+    } catch {}
+  }
+
+  const stats = await referralStats(tgId);
+
+  ctx.reply(`✅ Invitations ajoutées.\nTotal actuel: ${stats}/3`);
+});
+
+bot.command("reset_ref", async (ctx) => {
+  if (!isAdmin(ctx)) return;
+
+  const parts = ctx.message.text.split(" ");
+  const tgId = Number(parts[1]);
+
+  if (!tgId) {
+    return ctx.reply("Usage:\n/reset_ref <tg_id>");
+  }
+
+  await q("delete from referrals where referrer_tg_id=$1", [tgId]);
+
+  ctx.reply("♻️ Invitations reset.");
+});
+
 // Admin entry
 bot.command("admin", async (ctx) => {
   if (!isAdmin(ctx)) return;
@@ -987,3 +1036,4 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
