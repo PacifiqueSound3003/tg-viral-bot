@@ -584,6 +584,8 @@ Envoie un message à tous les utilisateurs (ceux qui ont fait Start).
   return upsertPanel(ctx, text, kb);
 }
 
+
+
 async function doBroadcast(text) {
   const users = await q("select tg_id from users");
   let ok = 0,
@@ -599,6 +601,22 @@ async function doBroadcast(text) {
     await new Promise((r) => setTimeout(r, 40)); // ~25 msg/sec
   }
   return { ok, fail, total: users.rows.length };
+}
+
+async function autoBroadcastGroupChange(mode, chatId) {
+  const text =
+`⚠️ Mise à jour : le groupe a changé.
+
+Pour accéder au nouveau groupe :
+1) Ouvre le bot
+2) Clique sur : 🔄 Rejoindre le groupe
+
+(Mode: ${mode})`;
+
+  // fire-and-forget (on ne bloque pas l’admin panel)
+  doBroadcast(text)
+    .then((res) => console.log("[AUTO_BROADCAST] done:", res))
+    .catch((e) => console.error("[AUTO_BROADCAST] error:", e?.message || e));
 }
 
 // ---------------------
@@ -893,10 +911,25 @@ bot.action("ADMIN_SWITCH_BACKUP", async (ctx) => {
   if (!isAdmin(ctx)) return;
 
   const backup = await getSetting("backup_chat_id");
-  if (!backup) return upsertPanel(ctx, "❌ Pas de backup configuré. Fais /bind_backup dans le groupe backup.", kbAdmin());
+  if (!backup) {
+    return upsertPanel(
+      ctx,
+      "❌ Pas de backup configuré. Fais /bind_backup dans le groupe backup.",
+      kbAdmin()
+    );
+  }
 
   await setSetting("active_chat_id", backup);
-  return upsertPanel(ctx, `🔁 Groupe actif = BACKUP (<code>${backup}</code>)`, kbAdmin());
+
+  // message admin immédiat
+  await upsertPanel(
+    ctx,
+    `🔁 Groupe actif = BACKUP (<code>${backup}</code>)\n\n📣 Notification envoyée automatiquement.`,
+    kbAdmin()
+  );
+
+  // auto broadcast (ne bloque pas)
+  autoBroadcastGroupChange("BACKUP", backup);
 });
 
 bot.action("ADMIN_SWITCH_MAIN", async (ctx) => {
@@ -904,10 +937,23 @@ bot.action("ADMIN_SWITCH_MAIN", async (ctx) => {
   if (!isAdmin(ctx)) return;
 
   const main = await getSetting("main_chat_id");
-  if (!main) return upsertPanel(ctx, "❌ Pas de principal configuré. Fais /bind_main dans le groupe principal.", kbAdmin());
+  if (!main) {
+    return upsertPanel(
+      ctx,
+      "❌ Pas de principal configuré. Fais /bind_main dans le groupe principal.",
+      kbAdmin()
+    );
+  }
 
   await setSetting("active_chat_id", main);
-  return upsertPanel(ctx, `🔁 Groupe actif = PRINCIPAL (<code>${main}</code>)`, kbAdmin());
+
+  await upsertPanel(
+    ctx,
+    `🔁 Groupe actif = PRINCIPAL (<code>${main}</code>)\n\n📣 Notification envoyée automatiquement.`,
+    kbAdmin()
+  );
+
+  autoBroadcastGroupChange("PRINCIPAL", main);
 });
 
 bot.action("ADMIN_BROADCAST_HELP", async (ctx) => {
