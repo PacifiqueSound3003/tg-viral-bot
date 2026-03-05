@@ -372,9 +372,7 @@ OU
 • 👥 Inviter 3 personnes 
 
 Ce filtre permet de garder un groupe :
-✔ actif
-✔ contributif
-✔ sain
+✔ actif ✔ contributif
 
 📊 <b>Ton statut actuel :</b>
 
@@ -1075,6 +1073,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
