@@ -369,7 +369,7 @@ un petit filtre d’entrée est mis en place.
 
 • 💳 Paiement 3$
 OU
-• 👥 Inviter 3 personnes (qui cliquent Start)
+• 👥 Inviter 3 personnes 
 
 Ce filtre permet de garder un groupe :
 ✔ actif
@@ -1075,6 +1075,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
