@@ -347,7 +347,7 @@ Le bot générera automatiquement
 un lien sécurisé et temporaire.
 
 Bienvenue dans la communauté.`
-    : `<b>👋 Bienvenue dans &lt;NOM_DU_GROUPE&gt;</b>
+    : `<b>👋 Bienvenue dans 🇫🇷  &lt;LIBERTYLEAK&gt; 🇫🇷 </b>
 
 Ce groupe est construit <b>par ses membres et pour ses membres</b>.
 
@@ -1073,5 +1073,6 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
