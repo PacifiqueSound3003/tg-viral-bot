@@ -328,22 +328,59 @@ async function reservePaymentAmount(tgId) {
 // --------------------
 // Pages: user
 async function renderHomeUser(ctx, opts = {}) {
-  const refLink = await getUserRefLink(ctx);
   const { refs, paid, eligible } = await getEligibility(ctx.from.id);
 
-  const text = `<b>👋 Bienvenue !</b>
+  const text = eligible
+    ? `<b>🎉 Félicitations !</b>
 
-<b>🔒 Accès au groupe premium :</b>
+Tu es maintenant <b>adhérent</b>.
+
+Notre système garantit que le groupe reste
+toujours accessible même si Telegram supprime
+un lien ou si le groupe change.
+
+Il te suffit simplement de cliquer sur :
+
+🔄 <b>Rejoindre le groupe</b>
+
+Le bot générera automatiquement
+un lien sécurisé et temporaire.
+
+Bienvenue dans la communauté.`
+    : `<b>👋 Bienvenue dans &lt;NOM_DU_GROUPE&gt;</b>
+
+Ce groupe est construit <b>par ses membres et pour ses membres</b>.
+
+Dans la plupart des communautés en ligne :
+90% des personnes restent passives
+et seulement 10% contribuent réellement.
+
+Ici nous faisons l’inverse.
+
+Nous voulons un groupe <b>actif, utile et qualitatif</b>,
+où chaque membre apporte quelque chose.
+
+Pour maintenir cette qualité,
+un petit filtre d’entrée est mis en place.
+
+🔒 <b>Accès au groupe :</b>
+
 • 💳 Paiement 3$
 OU
 • 👥 Inviter 3 personnes (qui cliquent Start)
 
-<b>📌 Ton lien :</b>
-${refLink}
+Ce filtre permet de garder un groupe :
+✔ actif
+✔ contributif
+✔ sain
 
-<b>📈 Invitations :</b> ${refs}/3
-<b>💳 Paiement :</b> ${paid ? "OK" : "non"}
-<b>✅ Statut :</b> ${eligible ? "Adhérent" : "Non adhérent"}`;
+📊 <b>Ton statut actuel :</b>
+
+📈 Invitations : ${refs}/3
+💳 Paiement : ${paid ? "OK" : "non"}
+✅ Statut : Non adhérent
+
+❓ Pour plus d'informations consulte la FAQ.`;
 
   return upsertPanel(ctx, text, kbHomeUser(eligible), opts);
 }
@@ -1036,4 +1073,5 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
