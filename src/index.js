@@ -371,8 +371,9 @@ un petit filtre d’entrée est mis en place.
 OU
 • 👥 Inviter 3 personnes 
 
-Ce filtre permet de garder un groupe :
-✔ actif ✔ contributif
+Ce filtre permet de garder un groupe actif 
+
+💡 Le moyen le plus simple d'accéder au groupe est simplement d'inviter 3 personnes.
 
 📊 <b>Ton statut actuel :</b>
 
@@ -1073,6 +1074,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
