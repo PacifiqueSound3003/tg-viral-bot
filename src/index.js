@@ -524,6 +524,19 @@ Clique “✍️ Écrire” puis tape ton message.`;
   return upsertPanel(ctx, text, kb);
 }
 
+async function broadcastGroupChange() {
+  const text =
+`⚠️ Le groupe a changé.
+
+Pour accéder au nouveau groupe :
+
+1️⃣ Ouvre le bot
+2️⃣ Clique sur
+🔄 Rejoindre le groupe`;
+
+  return doBroadcast(text);
+}
+
 async function doBroadcast(text) {
   const users = await q("select tg_id from users");
   let ok = 0, fail = 0;
@@ -700,7 +713,16 @@ bot.action("ADMIN_SWITCH_BACKUP", async (ctx) => {
   }
   await setSetting("active_chat_id", backup);
   return upsertPanel(ctx, `🔁 OK. Groupe actif = BACKUP (<code>${backup}</code>)`, kbAdmin());
-});
+  await setSetting("active_chat_id", backup);
+
+  await upsertPanel(
+  ctx,
+  `🔁 Groupe actif = BACKUP (<code>${backup}</code>)\n\n📣 Notification envoyée aux membres.`,
+  kbAdmin()
+  );
+
+  broadcastGroupChange();
+  });
 
 bot.action("ADMIN_SWITCH_MAIN", async (ctx) => {
   await ctx.answerCbQuery();
@@ -711,8 +733,15 @@ bot.action("ADMIN_SWITCH_MAIN", async (ctx) => {
     return upsertPanel(ctx, "❌ Pas de principal configuré. Fais /bind_main dans le groupe principal.", kbAdmin());
   }
   await setSetting("active_chat_id", main);
-  return upsertPanel(ctx, `🔁 OK. Groupe actif = PRINCIPAL (<code>${main}</code>)`, kbAdmin());
-});
+
+  await upsertPanel(
+  ctx,
+  `🔁 Groupe actif = PRINCIPAL (<code>${main}</code>)\n\n📣 Notification envoyée aux membres.`,
+  kbAdmin()
+  );
+
+  broadcastGroupChange();
+  });
 
 // Broadcast
 bot.action("ADMIN_BROADCAST_HELP", async (ctx) => {
@@ -796,3 +825,4 @@ bot.launch()
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
