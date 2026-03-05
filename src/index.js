@@ -351,6 +351,8 @@ Bienvenue dans la communauté.`
 
 Ce groupe est construit <b>par ses membres et pour ses membres</b>.
 
+🇫🇷 Réservé aux Francais uniquement 🇫🇷
+
 Dans la plupart des communautés en ligne :
 90% des personnes restent passives
 et seulement 10% contribuent réellement.
@@ -1073,6 +1075,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
