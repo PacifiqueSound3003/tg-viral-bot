@@ -812,12 +812,24 @@ bot.command("bind_backup", async (ctx) => {
 // --------------------
 // START + Navigation
 bot.start(async (ctx) => {
+
   const payload = (ctx.startPayload || "").trim();
   const referredByCode = payload.startsWith("ref_") ? payload.slice(4) : null;
 
   await ensureUser(ctx, referredByCode);
 
-  if (isAdmin(ctx)) return renderAdminHome(ctx, { forceNew: true });
+  if (isAdmin(ctx)) {
+    return renderAdminHome(ctx, { forceNew: true });
+  }
+
+  // IMAGE DE BIENVENUE
+  await ctx.replyWithPhoto(
+    "https://ibb.co/spfy0YvM",
+    {
+      caption: "Bienvenue 👋",
+    }
+  );
+
   return renderHomeUser(ctx, { forceNew: true });
 });
 
@@ -1074,6 +1086,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
