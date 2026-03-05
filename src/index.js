@@ -166,6 +166,7 @@ function kbReferral(refLink) {
 function kbPay() {
   return Markup.inlineKeyboard([
     [Markup.button.callback("🔄 Vérifier / Rejoindre", "ACTION_ACCESS")],
+    [Markup.button.callback("📋 Copier l'adresse", "COPY_ADDRESS")],
     [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
   ]);
 }
@@ -252,7 +253,7 @@ async function renderPay(ctx) {
 Envoie exactement : <b>${p.expected_amount} USDT</b> (TRC20)
 Adresse : <code>${USDT_ADDRESS_TRC20}</code>
 
-⏳ Valable jusqu’à : ${new Date(p.expires_at).toLocaleString()}
+⏳ Valable jusqu’à : ${new Date(p.expires_at).toLocaleString("fr-FR", {day: "2-digit",month: "2-digit",year: "numeric",hour: "2-digit",minute: "2-digit",second: "2-digit"})}
 
 Ensuite clique “🔄 Vérifier / Rejoindre”.`;
 
@@ -577,6 +578,19 @@ bot.action("PAGE_HOME", async (ctx) => {
   return renderHomeUser(ctx);
 });
 
+bot.action("COPY_ADDRESS", async (ctx) => {
+  await ctx.answerCbQuery();
+
+  return ctx.reply(
+`📋 Adresse USDT TRC20
+
+\`${USDT_ADDRESS_TRC20}\`
+
+Appuie longuement pour copier.`,
+  { parse_mode: "Markdown" }
+  );
+});
+
 bot.action("PAGE_REF", async (ctx) => {
   await ctx.answerCbQuery();
   if (isAdmin(ctx)) return renderAdminHome(ctx);
@@ -825,4 +839,5 @@ bot.launch()
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
