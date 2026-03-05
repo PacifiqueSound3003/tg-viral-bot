@@ -428,11 +428,33 @@ Ensuite clique “🔄 Vérifier / Rejoindre”.
 async function renderFAQ(ctx) {
   const text = `<b>❓ FAQ</b>
 
+<b>• Qui est derrière ce programme ?</b>
+Ce programme a été développé par un groupe, mis à la disposition de tous.
+
+<b>• Paiement & anonymat :</b>
+Le paiement se fait en crypto afin de garantir l’anonymat de tout le monde, en tenant compte du fait que Telegram n’est pas totalement protégé.
+
+<b>• Collaboration :</b>
+Nous sommes ouverts à la collaboration.
+
+<b>• Développement de projets :</b>
+Nous sommes ouverts au développement de vos projets.
+
+<b>• Sécurité / algorithmes :</b>
+Nos algorithmes sont puissants et visent à garantir l’anonymat de chacun.
+Ils aident aussi à détecter les fraudes via l’IA et à empêcher le téléchargement de contenus, y compris par des tentatives via Telegram Web.
+
+<b>• Règles & modération :</b>
+Personne ne “fait la loi” comme un chef : tout est analysé par des bots qui assurent le bon fonctionnement du groupe et des échanges.
+
 <b>• Accès :</b>
 Paiement 3$ (USDT) OU inviter 3 personnes (Start).
 
 <b>• Pourquoi un lien temporaire ?</b>
 Pour éviter les fuites.
+
+<b>• Bannissement :</b>
+Tout bannissement est irréversible. Même en changeant de compte, le ban restera permanent.
 
 <b>• Problème ?</b>
 📩 Contact Team.`;
@@ -1083,6 +1105,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
