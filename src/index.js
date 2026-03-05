@@ -13,32 +13,41 @@ const PAY_STEP = Number(process.env.PAY_STEP || 0.001);
 const PAY_SLOTS = Number(process.env.PAY_SLOTS || 200);
 const PAY_EXPIRE_MINUTES = Number(process.env.PAY_EXPIRE_MINUTES || 30);
 const USDT_ADDRESS_TRC20 = process.env.USDT_ADDRESS_TRC20 || "";
-const WELCOME_IMAGE_URL = process.env.WELCOME_IMAGE_URL || null;
 
-// --- Helpers UI centralisée ---
-async function upsertPanel(ctx, text, keyboard, opts = {}) {
-  // opts.forceNew: true => envoie un nouveau message (utile pour /start)
-  try {
-    if (!opts.forceNew && ctx.updateType === "callback_query") {
-      return await ctx.editMessageText(text, { parse_mode: "HTML", ...keyboard });
-    }
-  } catch (e) {
-    // Si edit impossible (message trop vieux / déjà édité / etc), fallback
-    console.log("edit failed, fallback reply:", e?.message);
-  }
-  return ctx.reply(text, { parse_mode: "HTML", ...keyboard });
-}
+/**
+ * SECURITY MODE:
+ * - If you enable Join Requests in the group, the bot can approve/decline requests.
+ * - If not enabled, the bot still uses 1-use invite links, but someone can still share it within its lifetime.
+ */
+const ENFORCE_JOIN_REQUESTS = (process.env.ENFORCE_JOIN_REQUESTS || "true").toLowerCase() === "true";
 
 function isAdmin(ctx) {
   return ctx.from?.id === ADMIN_TG_ID;
 }
 
-// --- DB helpers ---
+/* -----------------------------
+   UI centralisée: edit ou reply
+--------------------------------*/
+async function upsertPanel(ctx, text, keyboard, opts = {}) {
+  try {
+    if (!opts.forceNew && ctx.updateType === "callback_query") {
+      return await ctx.editMessageText(text, { parse_mode: "HTML", disable_web_page_preview: true, ...keyboard });
+    }
+  } catch (e) {
+    // fallback si edit impossible
+    console.log("edit failed -> reply fallback:", e?.message);
+  }
+  return ctx.reply(text, { parse_mode: "HTML", disable_web_page_preview: true, ...keyboard });
+}
+
+/* -----------------------------
+   DB helpers
+--------------------------------*/
 async function ensureUser(ctx, referredByCode = null) {
   const u = ctx.from;
   const deleted = isDeletedUser(u);
 
-  const existing = await q("select * from users where tg_id=$1", [u.id]);
+  const existing = await q("select tg_id, ref_code from users where tg_id=$1", [u.id]);
   if (existing.rowCount === 0) {
     const refCode = makeRefCode();
     let referredBy = null;
@@ -56,11 +65,23 @@ async function ensureUser(ctx, referredByCode = null) {
       [u.id, u.username || null, u.first_name || null, refCode, referredBy, deleted]
     );
 
-    // crédite referral une seule fois
+    // Referral credit (MVP anti-fraud):
+    // - no deleted accounts
+    // - no self referral already handled
+    // - referred_tg_id unique prevents double credits
     if (referredBy && !deleted) {
       const already = await q("select 1 from referrals where referred_tg_id=$1", [u.id]);
       if (already.rowCount === 0) {
         await q("insert into referrals (referrer_tg_id, referred_tg_id) values ($1,$2)", [referredBy, u.id]);
+
+        // Notify referrer (best effort)
+        try {
+          const cnt = await referralStats(referredBy);
+          await bot.telegram.sendMessage(
+            referredBy,
+            `✅ 1 ami a rejoint via ton lien.\n👥 Invitations: ${cnt}/3`
+          );
+        } catch {}
       }
     }
   } else {
@@ -73,7 +94,7 @@ async function ensureUser(ctx, referredByCode = null) {
 
 async function getUserRefLink(ctx) {
   const me = await q("select ref_code from users where tg_id=$1", [ctx.from.id]);
-  const refCode = me.rows[0].ref_code;
+  const refCode = me.rows[0]?.ref_code;
   return `https://t.me/${ctx.me}?start=ref_${refCode}`;
 }
 
@@ -93,7 +114,9 @@ async function getEligibility(tgId) {
   return { refs, paid, eligible: paid || refs >= 3 };
 }
 
-// --- Settings (groupes) ---
+/* -----------------------------
+   Settings for group rotation
+--------------------------------*/
 async function getActiveChatId() {
   const active = await getSetting("active_chat_id");
   if (active) return Number(active);
@@ -106,9 +129,16 @@ async function getActiveChatId() {
   return null;
 }
 
-// --- Menus ---
+/* -----------------------------
+   Keyboards
+--------------------------------*/
+function kbBackToHome(label = "🏠 Menu") {
+  return Markup.inlineKeyboard([[Markup.button.callback(label, "PAGE_HOME")]]);
+}
+
 function kbHomeUser(refLink, eligible) {
   if (!eligible) {
+    // Pas de partage ici (tu voulais éviter les doublons)
     return Markup.inlineKeyboard([
       [Markup.button.callback("👥 Inviter 3 personnes", "PAGE_REF")],
       [Markup.button.callback("💳 Payer 3$ (USDT)", "PAGE_PAY")],
@@ -117,29 +147,26 @@ function kbHomeUser(refLink, eligible) {
     ]);
   }
 
+  // Adhérent: bouton permanent “Rejoindre”
   return Markup.inlineKeyboard([
-    [Markup.button.callback("🔐 Générer le lien du groupe", "ACTION_ACCESS")],
+    [Markup.button.callback("🔄 Rejoindre le groupe", "ACTION_ACCESS")],
     [Markup.button.callback("ℹ️ Infos", "PAGE_INFO")],
     [Markup.button.callback("❓ FAQ", "PAGE_FAQ")],
     [Markup.button.callback("📩 Contact Team", "PAGE_CONTACT")]
   ]);
 }
 
-function kbBackToHome() {
-  return Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "PAGE_HOME")]]);
+function kbReferral(refLink) {
+  return Markup.inlineKeyboard([
+    [Markup.button.url("📤 Partager mon lien", shareLink(refLink))],
+    [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
+  ]);
 }
 
-function kbAdmin() {
+function kbPay() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback("📌 Binder PRINCIPAL", "ADMIN_BIND_MAIN_HELP"),
-     Markup.button.callback("🛟 Binder BACKUP", "ADMIN_BIND_BACKUP_HELP")],
-
-    [Markup.button.callback("🔁 Basculer vers BACKUP", "ADMIN_SWITCH_BACKUP"),
-     Markup.button.callback("👀 Voir config", "ADMIN_CONFIG")],
-
-    [Markup.button.callback("↩️ Revenir au PRINCIPAL", "ADMIN_SWITCH_MAIN")],
-
-    [Markup.button.callback("📊 Statistiques", "ADMIN_STATS")]
+    [Markup.button.callback("🔄 Vérifier / Rejoindre", "ACTION_ACCESS")],
+    [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
   ]);
 }
 
@@ -152,7 +179,18 @@ function kbContact() {
   ]);
 }
 
-// --- Pages render ---
+function kbAdmin() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("📌 Principal", "ADMIN_BIND_MAIN_HELP"), Markup.button.callback("🛟 Backup", "ADMIN_BIND_BACKUP_HELP")],
+    [Markup.button.callback("🔁 Activer Backup", "ADMIN_SWITCH_BACKUP"), Markup.button.callback("👀 Config", "ADMIN_CONFIG")],
+    [Markup.button.callback("🔁 Activer Principal", "ADMIN_SWITCH_MAIN"), Markup.button.callback("📊 Stats", "ADMIN_STATS")],
+    [Markup.button.callback("📣 Broadcast", "ADMIN_BROADCAST_HELP")]
+  ]);
+}
+
+/* -----------------------------
+   Pages: USER
+--------------------------------*/
 async function renderHomeUser(ctx, opts = {}) {
   const refLink = await getUserRefLink(ctx);
   const { refs, paid, eligible } = await getEligibility(ctx.from.id);
@@ -172,10 +210,6 @@ ${refLink}
 <b>💳 Paiement :</b> ${paid ? "OK" : "non"}
 <b>✅ Statut :</b> ${eligible ? "Adhérent" : "Non adhérent"}`;
 
-  // Option image: on reste simple -> message texte centralisé.
-  // Si tu veux garder une image, on peut faire un "message image épinglé"
-  // mais l'édition d'une photo est plus compliquée (editMessageCaption).
-
   return upsertPanel(ctx, text, kbHomeUser(refLink, eligible), opts);
 }
 
@@ -184,48 +218,32 @@ async function renderReferral(ctx) {
   const refs = await referralStats(ctx.from.id);
 
   const text =
-`<b>👥 Parrainage</b>
+`<b>👥 Inviter 3 personnes</b>
 
 Partage ce lien :
 ${refLink}
 
 ✅ Invitations validées : <b>${refs}/3</b>
 
-⚠️ Comptent seulement les personnes qui appuient sur Start (1 seule fois par compte).`;
+⚠️ Compte uniquement si la personne appuie sur Start.`;
 
-  const kb = Markup.inlineKeyboard([
-    [Markup.button.url("📤 Partager mon lien", shareLink(refLink))],
-    [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
-  ]);
-
-  return upsertPanel(ctx, text, kb);
+  return upsertPanel(ctx, text, kbReferral(refLink));
 }
 
 async function renderPay(ctx) {
-  // Admin ne doit pas payer
   if (isAdmin(ctx)) {
-    return upsertPanel(
-      ctx,
-      "<b>🛠 Admin</b>\n\nTu n’as pas besoin de payer. Utilise le panel admin.",
-      Markup.inlineKeyboard([[Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")]])
-    );
+    return renderAdminHome(ctx);
   }
 
-  // Si adresse vide => on affiche un message propre
   if (!USDT_ADDRESS_TRC20) {
-    return upsertPanel(
-      ctx,
-      "⚠️ Paiement non configuré (USDT_ADDRESS_TRC20 manquant).",
-      kbBackToHome()
-    );
+    return upsertPanel(ctx, "⚠️ Paiement non configuré (USDT_ADDRESS_TRC20 manquant).", kbBackToHome());
   }
 
-  // Paiement pending existant ?
+  // pending existant ?
   const existing = await q(
     "select * from payments where tg_id=$1 and status='pending' and expires_at > now() order by created_at desc limit 1",
     [ctx.from.id]
   );
-
   if (existing.rowCount > 0) {
     const p = existing.rows[0];
     const text =
@@ -236,17 +254,12 @@ Adresse : <code>${USDT_ADDRESS_TRC20}</code>
 
 ⏳ Valable jusqu’à : ${new Date(p.expires_at).toLocaleString()}
 
-Ensuite clique <b>“🔐 Générer le lien du groupe”</b> (si ton paiement est confirmé).`;
+Ensuite clique “🔄 Vérifier / Rejoindre”.`;
 
-    const kb = Markup.inlineKeyboard([
-      [Markup.button.callback("🔐 Générer le lien du groupe", "ACTION_ACCESS")],
-      [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
-    ]);
-
-    return upsertPanel(ctx, text, kb);
+    return upsertPanel(ctx, text, kbPay());
   }
 
-  // Réserve un montant unique
+  // réserve un montant unique
   const pending = await q("select expected_amount from payments where status='pending' and expires_at > now()");
   const used = new Set(pending.rows.map(r => String(r.expected_amount)));
 
@@ -255,10 +268,7 @@ Ensuite clique <b>“🔐 Générer le lien du groupe”</b> (si ton paiement es
     const candidate = (PAY_BASE + i * PAY_STEP).toFixed(6);
     if (!used.has(candidate)) { amount = candidate; break; }
   }
-
-  if (!amount) {
-    return upsertPanel(ctx, "❌ Trop de paiements en attente. Réessaie dans quelques minutes.", kbBackToHome());
-  }
+  if (!amount) return upsertPanel(ctx, "❌ Trop de paiements en attente. Réessaie dans quelques minutes.", kbBackToHome());
 
   const expiresAt = nowPlusMinutes(PAY_EXPIRE_MINUTES);
   await q(
@@ -273,31 +283,25 @@ Ensuite clique <b>“🔐 Générer le lien du groupe”</b> (si ton paiement es
 2) À l’adresse : <code>${USDT_ADDRESS_TRC20}</code>
 3) Valable <b>${PAY_EXPIRE_MINUTES} minutes</b>
 
-Ensuite clique <b>“🔐 Générer le lien du groupe”</b>.
+Ensuite clique “🔄 Vérifier / Rejoindre”.
 
 ⚠️ Envoie sur le bon réseau (TRC20).`;
 
-  const kb = Markup.inlineKeyboard([
-    [Markup.button.callback("🔐 Générer le lien du groupe", "ACTION_ACCESS")],
-    [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
-  ]);
-
-  return upsertPanel(ctx, text, kb);
+  return upsertPanel(ctx, text, kbPay());
 }
 
 async function renderFAQ(ctx) {
   const text =
 `<b>❓ FAQ</b>
 
-<b>• Comment accéder ?</b>
+<b>• Accès :</b>
 Paiement 3$ (USDT) OU inviter 3 personnes (Start).
 
-<b>• Pourquoi le lien est temporaire ?</b>
-Pour éviter les fuites et protéger le contenu.
+<b>• Liens temporaires ?</b>
+Oui, pour éviter les fuites.
 
-<b>• J’ai payé mais pas d’accès ?</b>
-Attends la confirmation (watcher) puis clique “🔐 Générer le lien du groupe”.
-Sinon Contact Team.`;
+<b>• Problème ?</b>
+📩 Contact Team.`;
 
   return upsertPanel(ctx, text, kbBackToHome());
 }
@@ -320,15 +324,12 @@ async function renderInfo(ctx) {
   return upsertPanel(ctx, text, kbBackToHome());
 }
 
-// --- Access action ---
+/* -----------------------------
+   ACCESS (create invite link)
+--------------------------------*/
 async function actionAccess(ctx) {
-  // Admin : pas besoin
   if (isAdmin(ctx)) {
-    return upsertPanel(
-      ctx,
-      "<b>🛠 Admin</b>\n\nTu peux générer des liens en tant qu’admin directement dans Telegram (ou tester la config).",
-      Markup.inlineKeyboard([[Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")]])
-    );
+    return renderAdminHome(ctx);
   }
 
   const { refs, paid, eligible } = await getEligibility(ctx.from.id);
@@ -338,9 +339,7 @@ async function actionAccess(ctx) {
 `⛔ <b>Accès non validé</b>
 
 👥 Invitations : <b>${refs}/3</b>
-💳 Paiement : <b>${paid ? "OK" : "non"}</b>
-
-Choisis une option :`;
+💳 Paiement : <b>${paid ? "OK" : "non"}</b>`;
 
     return upsertPanel(ctx, text, kbHomeUser(refLink, false));
   }
@@ -349,11 +348,12 @@ Choisis une option :`;
   if (!activeChatId) {
     return upsertPanel(
       ctx,
-      "⚠️ Groupe non configuré. Demande à l’admin de binder le groupe principal (/bind_main) et/ou backup (/bind_backup).",
+      "⚠️ Groupe non configuré. Demande à l’admin de binder le principal (/bind_main) et/ou backup (/bind_backup).",
       kbBackToHome()
     );
   }
 
+  // 1-use invite link + expiry
   const expireDate = Math.floor(Date.now() / 1000) + INVITE_EXPIRE_MINUTES * 60;
 
   try {
@@ -363,16 +363,14 @@ Choisis une option :`;
     });
 
     const text =
-`✅ <b>Accès débloqué !</b>
+`✅ <b>Prêt !</b>
 
 🔗 Lien (1 seule utilisation, expire dans <b>${INVITE_EXPIRE_MINUTES} min</b>) :
-${link.invite_link}`;
+${link.invite_link}
 
-    const kb = Markup.inlineKeyboard([
-      [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
-    ]);
+${ENFORCE_JOIN_REQUESTS ? "🔐 Si le groupe est en <b>demande d’adhésion</b>, ton entrée sera approuvée automatiquement." : ""}`;
 
-    return upsertPanel(ctx, text, kb);
+    return upsertPanel(ctx, text, kbBackToHome());
   } catch (e) {
     console.error(e);
     return upsertPanel(
@@ -383,18 +381,60 @@ ${link.invite_link}`;
   }
 }
 
-// --- Contact flow (saisie texte) ---
+/* -----------------------------
+   Anti-partage “fort”: Join Requests
+   Works ONLY if Join Requests are enabled in the group.
+--------------------------------*/
+bot.on("chat_join_request", async (ctx) => {
+  try {
+    if (!ENFORCE_JOIN_REQUESTS) return;
+
+    const userId = ctx.from.id;
+
+    // Allow only eligible users
+    const { eligible } = await getEligibility(userId);
+    if (!eligible) {
+      await ctx.telegram.declineChatJoinRequest(ctx.chat.id, userId);
+      return;
+    }
+
+    await ctx.telegram.approveChatJoinRequest(ctx.chat.id, userId);
+  } catch (e) {
+    console.error("chat_join_request error:", e?.message || e);
+  }
+});
+
+/* -----------------------------
+   Contact flow: categories -> user types text -> send to admin
+--------------------------------*/
 const CONTACT_STATE = new Map(); // tg_id -> type
 
 async function renderContact(ctx) {
-  const text =
-`<b>📩 Contact Team</b>
-
-Choisis un sujet :`;
+  const text = `<b>📩 Contact Team</b>\n\nChoisis un sujet :`;
   return upsertPanel(ctx, text, kbContact());
 }
 
-// --- Admin pages ---
+async function promptContactText(ctx, type) {
+  CONTACT_STATE.set(ctx.from.id, type);
+
+  const label = {
+    CONTACT_REC: "Recommandation",
+    CONTACT_COLLAB: "Collaboration Projet",
+    CONTACT_BUG: "Remonter un problème"
+  }[type];
+
+  const text =
+`<b>✍️ ${label}</b>
+
+Écris ton message ici. Il sera envoyé à l’équipe.`;
+
+  const kb = Markup.inlineKeyboard([[Markup.button.callback("🏠 Annuler", "PAGE_HOME")]]);
+  return upsertPanel(ctx, text, kb);
+}
+
+/* -----------------------------
+   Pages: ADMIN
+--------------------------------*/
 async function renderAdminHome(ctx, opts = {}) {
   if (!isAdmin(ctx)) return renderHomeUser(ctx, opts);
 
@@ -416,18 +456,24 @@ async function renderAdminConfig(ctx) {
 
 📌 main_chat_id: <code>${main || "—"}</code>
 🛟 backup_chat_id: <code>${backup || "—"}</code>
-✅ active_chat_id: <code>${active || "—"}</code>`;
+✅ active_chat_id: <code>${active || "—"}</code>
 
-  return upsertPanel(ctx, text, Markup.inlineKeyboard([
-    [Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")],
-    [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
-  ]));
+${ENFORCE_JOIN_REQUESTS ? "🔐 Join Requests: <b>ENFORCED</b>" : "🔐 Join Requests: <b>OFF</b>"}`;
+
+  return upsertPanel(
+    ctx,
+    text,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("🛠 Admin", "ADMIN_HOME"), Markup.button.callback("🏠 Menu", "PAGE_HOME")]
+    ])
+  );
 }
 
 async function renderAdminStats(ctx) {
   const users = await q("select count(*)::int as n from users");
   const refs = await q("select count(*)::int as n from referrals");
   const paid = await q("select count(*)::int as n from payments where status='confirmed'");
+
   const eligible = await q(`
     select count(*)::int as n
     from users u
@@ -438,34 +484,80 @@ async function renderAdminStats(ctx) {
   const conv = users.rows[0].n > 0 ? ((eligible.rows[0].n / users.rows[0].n) * 100).toFixed(1) : "0.0";
 
   const text =
-`<b>📊 Statistiques</b>
+`<b>📊 Stats</b>
 
 👤 Users : <b>${users.rows[0].n}</b>
-👥 Invitations (totales) : <b>${refs.rows[0].n}</b>
+👥 Referrals : <b>${refs.rows[0].n}</b>
 💳 Paiements confirmés : <b>${paid.rows[0].n}</b>
 ✅ Adhérents : <b>${eligible.rows[0].n}</b>
 📈 Conversion : <b>${conv}%</b>`;
 
-  return upsertPanel(ctx, text, Markup.inlineKeyboard([
-    [Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")],
-    [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
-  ]));
+  return upsertPanel(
+    ctx,
+    text,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("🛠 Admin", "ADMIN_HOME"), Markup.button.callback("🏠 Menu", "PAGE_HOME")]
+    ])
+  );
 }
 
-// --- START ---
+/* -----------------------------
+   Broadcast admin
+--------------------------------*/
+const ADMIN_BROADCAST_STATE = new Map(); // admin_id -> true/false
+
+async function renderBroadcastHelp(ctx) {
+  const text =
+`<b>📣 Broadcast</b>
+
+Envoie un message à tous les utilisateurs (ceux qui ont fait Start).
+
+✅ Exemple utile quand tu switches de groupe :
+"⚠️ Le groupe a changé. Ouvre le bot et clique 🔄 Rejoindre le groupe."
+
+Clique “✍️ Écrire” puis tape ton message.`;
+
+  const kb = Markup.inlineKeyboard([
+    [Markup.button.callback("✍️ Écrire", "ADMIN_BROADCAST_WRITE"), Markup.button.callback("🛠 Admin", "ADMIN_HOME")]
+  ]);
+
+  return upsertPanel(ctx, text, kb);
+}
+
+async function doBroadcast(text) {
+  const users = await q("select tg_id from users");
+  let ok = 0, fail = 0;
+
+  // Throttle simple (Telegram rate limits)
+  for (const row of users.rows) {
+    try {
+      await bot.telegram.sendMessage(row.tg_id, text, { disable_web_page_preview: true });
+      ok++;
+    } catch {
+      fail++;
+    }
+    await new Promise(r => setTimeout(r, 40)); // ~25 msg/sec
+  }
+  return { ok, fail, total: users.rows.length };
+}
+
+/* -----------------------------
+   Routes / Start
+--------------------------------*/
 bot.start(async (ctx) => {
   const payload = (ctx.startPayload || "").trim();
   const referredByCode = payload.startsWith("ref_") ? payload.slice(4) : null;
   await ensureUser(ctx, referredByCode);
 
-  // Admin: écran admin uniquement (pas le flow user)
   if (isAdmin(ctx)) {
     return renderAdminHome(ctx, { forceNew: true });
   }
   return renderHomeUser(ctx, { forceNew: true });
 });
 
-// --- Pages navigation (centralisées) ---
+/* -----------------------------
+   Navigation callbacks
+--------------------------------*/
 bot.action("PAGE_HOME", async (ctx) => {
   await ctx.answerCbQuery();
   if (isAdmin(ctx)) return renderAdminHome(ctx);
@@ -489,75 +581,38 @@ bot.action("PAGE_FAQ", async (ctx) => {
   return renderFAQ(ctx);
 });
 
-bot.action("PAGE_CONTACT", async (ctx) => {
-  await ctx.answerCbQuery();
-  return renderContact(ctx);
-});
-
 bot.action("PAGE_INFO", async (ctx) => {
   await ctx.answerCbQuery();
   if (isAdmin(ctx)) return renderAdminHome(ctx);
   return renderInfo(ctx);
 });
 
-// --- Actions ---
+bot.action("PAGE_CONTACT", async (ctx) => {
+  await ctx.answerCbQuery();
+  return renderContact(ctx);
+});
+
 bot.action("ACTION_ACCESS", async (ctx) => {
   await ctx.answerCbQuery();
   return actionAccess(ctx);
 });
 
-// --- Contact actions ---
-bot.action(["CONTACT_REC","CONTACT_COLLAB","CONTACT_BUG"], async (ctx) => {
+/* -----------------------------
+   Contact callbacks
+--------------------------------*/
+bot.action(["CONTACT_REC", "CONTACT_COLLAB", "CONTACT_BUG"], async (ctx) => {
   await ctx.answerCbQuery();
-  const type = ctx.callbackQuery.data;
-  CONTACT_STATE.set(ctx.from.id, type);
-
-  const label = {
-    CONTACT_REC: "Recommandation",
-    CONTACT_COLLAB: "Collaboration Projet",
-    CONTACT_BUG: "Remonter un problème"
-  }[type];
-
-  // On reste centralisé: on édite le panneau pour demander le texte
-  const text =
-`<b>✍️ ${label}</b>
-
-Écris ton message ici. Il sera envoyé à l’équipe.`;
-
-  const kb = Markup.inlineKeyboard([[Markup.button.callback("🏠 Annuler", "PAGE_HOME")]]);
-  return upsertPanel(ctx, text, kb);
+  return promptContactText(ctx, ctx.callbackQuery.data);
 });
 
-bot.on("text", async (ctx) => {
-  const type = CONTACT_STATE.get(ctx.from.id);
-  if (!type) return;
-
-  CONTACT_STATE.delete(ctx.from.id);
-
-  const label = {
-    CONTACT_REC: "💡 Recommandation",
-    CONTACT_COLLAB: "🤝 Collaboration Projet",
-    CONTACT_BUG: "🛠 Problème"
-  }[type];
-
-  // envoie aux admins
-  await ctx.telegram.sendMessage(
-    ADMIN_TG_ID,
-    `${label}\nDe: @${ctx.from.username || "sans_username"} (tg_id: ${ctx.from.id})\n\n${ctx.message.text}`
-  );
-
-  // On renvoie au menu (nouveau message car c'est un message texte user, pas un callback)
-  const text = "✅ Merci ! Ton message a été transmis à l’équipe.";
-  return upsertPanel(ctx, text, kbBackToHome(), { forceNew: true });
-});
-
-// --- ADMIN entry (optionnel) ---
+/* -----------------------------
+   Admin callbacks
+--------------------------------*/
 bot.command("admin", async (ctx) => {
   if (!isAdmin(ctx)) return;
   return renderAdminHome(ctx, { forceNew: true });
 });
 
-// Admin buttons
 bot.action("ADMIN_HOME", async (ctx) => {
   await ctx.answerCbQuery();
   return renderAdminHome(ctx);
@@ -585,12 +640,15 @@ bot.action("ADMIN_BIND_MAIN_HELP", async (ctx) => {
 1) Ajoute le bot dans le groupe en admin
 2) Tape <code>/bind_main</code> <b>dans le groupe</b> (pas en privé)
 
-Ensuite “Voir config” pour confirmer.`;
+Ensuite clique “👀 Config”.`;
 
-  return upsertPanel(ctx, text, Markup.inlineKeyboard([
-    [Markup.button.callback("👀 Voir config", "ADMIN_CONFIG")],
-    [Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")]
-  ]));
+  return upsertPanel(
+    ctx,
+    text,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("👀 Config", "ADMIN_CONFIG"), Markup.button.callback("🛠 Admin", "ADMIN_HOME")]
+    ])
+  );
 });
 
 bot.action("ADMIN_BIND_BACKUP_HELP", async (ctx) => {
@@ -603,15 +661,18 @@ bot.action("ADMIN_BIND_BACKUP_HELP", async (ctx) => {
 1) Ajoute le bot dans le groupe en admin
 2) Tape <code>/bind_backup</code> <b>dans le groupe</b> (pas en privé)
 
-Ensuite “Voir config” pour confirmer.`;
+Ensuite clique “👀 Config”.`;
 
-  return upsertPanel(ctx, text, Markup.inlineKeyboard([
-    [Markup.button.callback("👀 Voir config", "ADMIN_CONFIG")],
-    [Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")]
-  ]));
+  return upsertPanel(
+    ctx,
+    text,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("👀 Config", "ADMIN_CONFIG"), Markup.button.callback("🛠 Admin", "ADMIN_HOME")]
+    ])
+  );
 });
 
-// These are typed INSIDE groups
+// typed inside groups
 bot.command("bind_main", async (ctx) => {
   if (!isAdmin(ctx)) return;
   if (ctx.chat.type === "private") return ctx.reply("⚠️ Tape /bind_main dans le groupe (pas en privé).");
@@ -635,14 +696,10 @@ bot.action("ADMIN_SWITCH_BACKUP", async (ctx) => {
 
   const backup = await getSetting("backup_chat_id");
   if (!backup) {
-    const text = "❌ Pas de backup configuré. Fais /bind_backup dans le groupe backup.";
-    return upsertPanel(ctx, text, Markup.inlineKeyboard([[Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")]]));
+    return upsertPanel(ctx, "❌ Pas de backup configuré. Fais /bind_backup dans le groupe backup.", kbAdmin());
   }
   await setSetting("active_chat_id", backup);
-  return upsertPanel(ctx, `🔁 OK. Groupe actif = BACKUP (<code>${backup}</code>)`, Markup.inlineKeyboard([
-    [Markup.button.callback("👀 Voir config", "ADMIN_CONFIG")],
-    [Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")]
-  ]));
+  return upsertPanel(ctx, `🔁 OK. Groupe actif = BACKUP (<code>${backup}</code>)`, kbAdmin());
 });
 
 bot.action("ADMIN_SWITCH_MAIN", async (ctx) => {
@@ -651,32 +708,91 @@ bot.action("ADMIN_SWITCH_MAIN", async (ctx) => {
 
   const main = await getSetting("main_chat_id");
   if (!main) {
-    const text = "❌ Pas de principal configuré. Fais /bind_main dans le groupe principal.";
-    return upsertPanel(ctx, text, Markup.inlineKeyboard([[Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")]]));
+    return upsertPanel(ctx, "❌ Pas de principal configuré. Fais /bind_main dans le groupe principal.", kbAdmin());
   }
   await setSetting("active_chat_id", main);
-  return upsertPanel(ctx, `↩️ OK. Groupe actif = PRINCIPAL (<code>${main}</code>)`, Markup.inlineKeyboard([
-    [Markup.button.callback("👀 Voir config", "ADMIN_CONFIG")],
-    [Markup.button.callback("🛠 Menu Admin", "ADMIN_HOME")]
-  ]));
+  return upsertPanel(ctx, `🔁 OK. Groupe actif = PRINCIPAL (<code>${main}</code>)`, kbAdmin());
 });
 
+// Broadcast
+bot.action("ADMIN_BROADCAST_HELP", async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return;
+  return renderBroadcastHelp(ctx);
+});
+
+bot.action("ADMIN_BROADCAST_WRITE", async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return;
+
+  ADMIN_BROADCAST_STATE.set(ctx.from.id, true);
+  const text =
+`<b>✍️ Broadcast</b>
+
+Tape maintenant le message à envoyer à tous les utilisateurs.
+
+⚠️ Conseil : garde-le court.`;
+
+  return upsertPanel(ctx, text, Markup.inlineKeyboard([[Markup.button.callback("🛠 Annuler", "ADMIN_HOME")]]));
+});
+
+/* -----------------------------
+   Text handler: contact + broadcast
+--------------------------------*/
+bot.on("text", async (ctx) => {
+  // Broadcast mode
+  if (isAdmin(ctx) && ADMIN_BROADCAST_STATE.get(ctx.from.id)) {
+    ADMIN_BROADCAST_STATE.delete(ctx.from.id);
+
+    const msg = ctx.message.text;
+    const start = Date.now();
+    const res = await doBroadcast(msg);
+    const secs = ((Date.now() - start) / 1000).toFixed(1);
+
+    return ctx.reply(
+      `✅ Broadcast terminé.\n\nTotal: ${res.total}\nOK: ${res.ok}\nFail: ${res.fail}\nDurée: ${secs}s`,
+      { disable_web_page_preview: true }
+    );
+  }
+
+  // Contact mode
+  const type = CONTACT_STATE.get(ctx.from.id);
+  if (type) {
+    CONTACT_STATE.delete(ctx.from.id);
+
+    const label = {
+      CONTACT_REC: "💡 Recommandation",
+      CONTACT_COLLAB: "🤝 Collaboration Projet",
+      CONTACT_BUG: "🛠 Problème"
+    }[type];
+
+    await ctx.telegram.sendMessage(
+      ADMIN_TG_ID,
+      `${label}\nDe: @${ctx.from.username || "sans_username"} (tg_id: ${ctx.from.id})\n\n${ctx.message.text}`
+    );
+
+    return ctx.reply("✅ Merci ! Ton message a été transmis à l’équipe.", { disable_web_page_preview: true });
+  }
+});
+
+/* -----------------------------
+   Global error catcher
+--------------------------------*/
 bot.catch((err, ctx) => {
   console.error("BOT ERROR:", err);
-  // Essayez de répondre proprement quand c’est une callback
   try {
     if (ctx?.updateType === "callback_query") {
-      return ctx.answerCbQuery("⚠️ Erreur interne. Vérifie la config DB/settings.", { show_alert: true });
+      ctx.answerCbQuery("⚠️ Erreur interne (logs).", { show_alert: true }).catch(() => {});
     }
   } catch {}
 });
 
-// --- Run ---
+/* -----------------------------
+   Run
+--------------------------------*/
 bot.launch()
   .then(() => console.log("Bot running (polling)"))
   .catch(console.error);
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
-
-
