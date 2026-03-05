@@ -429,34 +429,39 @@ async function renderFAQ(ctx) {
   const text = `<b>❓ FAQ</b>
 
 <b>• Qui est derrière ce programme ?</b>
-Ce programme a été développé par un groupe, mis à la disposition de tous.
+Ce programme a été développé par un groupe indépendant et est mis à la disposition de tous.
 
 <b>• Paiement & anonymat :</b>
-Le paiement se fait en crypto afin de garantir l’anonymat de tout le monde, en tenant compte du fait que Telegram n’est pas totalement protégé.
+Le paiement s’effectue en crypto (USDT) afin de préserver l’anonymat de chacun. Cela permet également de limiter l’exposition des informations personnelles, Telegram n’étant pas une plateforme totalement sécurisée.
 
 <b>• Collaboration :</b>
-Nous sommes ouverts à la collaboration.
+Nous sommes ouverts aux collaborations avec des personnes ou des équipes partageant la même vision.
 
 <b>• Développement de projets :</b>
-Nous sommes ouverts au développement de vos projets.
+Nous sommes également ouverts au développement et à l’accompagnement de nouveaux projets.
 
-<b>• Sécurité / algorithmes :</b>
-Nos algorithmes sont puissants et visent à garantir l’anonymat de chacun.
-Ils aident aussi à détecter les fraudes via l’IA et à empêcher le téléchargement de contenus, y compris par des tentatives via Telegram Web.
+<b>• Sécurité & algorithmes :</b>
+Nos algorithmes sont conçus pour garantir l’anonymat et la sécurité des utilisateurs.  
+Ils analysent en permanence l’activité afin de détecter les fraudes grâce à l’IA et empêchent le téléchargement ou l’extraction de contenus, y compris via Telegram Web.
 
-<b>• Règles & modération :</b>
-Personne ne “fait la loi” comme un chef : tout est analysé par des bots qui assurent le bon fonctionnement du groupe et des échanges.
+<b>• Modération automatisée :</b>
+Aucune personne ne dirige ou ne prend des décisions arbitraires.  
+Les systèmes automatisés et les bots analysent les activités afin d’assurer un fonctionnement équitable et sécurisé du groupe.
 
 <b>• Accès :</b>
-Paiement 3$ (USDT) OU inviter 3 personnes (Start).
+Accès possible via :
+• Paiement de 3$ (USDT)  
+OU  
+• Invitation de 3 personnes via Start.
 
-<b>• Pourquoi un lien temporaire ?</b>
-Pour éviter les fuites.
+<b>• Système d’accès sécurisé :</b>
+Un système d’accès sécurisé et inviolable permet aux membres d’échanger en toute confidentialité, en garantissant anonymat et protection.
 
 <b>• Bannissement :</b>
-Tout bannissement est irréversible. Même en changeant de compte, le ban restera permanent.
+Tout bannissement est définitif et irréversible.  
+Toute tentative de retour avec un autre compte sera automatiquement détectée et bloquée.
 
-<b>• Problème ?</b>
+<b>• Problème ou question ?</b>
 📩 Contact Team.`;
 
   return upsertPanel(ctx, text, kbBackToHome());
@@ -1105,6 +1110,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
