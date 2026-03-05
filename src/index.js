@@ -280,6 +280,26 @@ async function renderPay(ctx) {
     );
   }
 
+  // ✅ 1) expire les pending expirés (pour ce user)
+  await q(
+    "update payments set status='expired' where tg_id=$1 and status='pending' and expires_at <= now()",
+    [ctx.from.id]
+  );
+
+  // ✅ 2) sécurité: s’il y a plusieurs pending actifs, on garde seulement le plus récent
+  await q(
+    `update payments
+     set status='expired'
+     where tg_id=$1 and status='pending' and expires_at > now()
+     and id <> (
+       select id from payments
+       where tg_id=$1 and status='pending' and expires_at > now()
+       order by created_at desc
+       limit 1
+     )`,
+    [ctx.from.id]
+  );
+
   const existing = await q(
     "select * from payments where tg_id=$1 and status='pending' and expires_at > now() order by created_at desc limit 1",
     [ctx.from.id]
@@ -324,6 +344,13 @@ Ensuite clique “🔄 Vérifier / Rejoindre”.`;
   }
 
   const expiresAt = nowPlusMinutes(PAY_EXPIRE_MINUTES);
+
+  // ✅ éviter que l’utilisateur spam "Payer" et crée plusieurs lignes
+  await q(
+    "update payments set status='expired' where tg_id=$1 and status='pending'",
+    [ctx.from.id]
+  );
+
   await q(
     "insert into payments (tg_id, expected_amount, status, expires_at) values ($1,$2,'pending',$3)",
     [ctx.from.id, amount, expiresAt]
@@ -342,7 +369,6 @@ Ensuite clique “🔄 Vérifier / Rejoindre”.
 
   return upsertPanel(ctx, text, kbPay());
 }
-
 async function renderFAQ(ctx) {
   const text = `<b>❓ FAQ</b>
 
@@ -1009,5 +1035,6 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
