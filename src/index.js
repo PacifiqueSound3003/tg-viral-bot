@@ -825,9 +825,6 @@ bot.start(async (ctx) => {
   // IMAGE DE BIENVENUE
   await ctx.replyWithPhoto(
     "https://thothd.com/contents/videos_screenshots/264000/264173/preview.jpg",
-    {
-      caption: "Bienvenue 👋",
-    }
   );
 
   return renderHomeUser(ctx, { forceNew: true });
@@ -1086,6 +1083,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
