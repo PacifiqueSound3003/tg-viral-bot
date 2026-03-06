@@ -98,11 +98,22 @@ async function ensureUser(ctx, referredByCode = null) {
           "insert into referrals (referrer_tg_id, referred_tg_id) values ($1,$2)",
           [referredBy, u.id]
         );
+
         try {
           const cnt = await referralStats(referredBy);
+          const remaining = Math.max(0, 3 - cnt);
+
           await bot.telegram.sendMessage(
             referredBy,
-            `✅ 1 ami a rejoint via ton lien.\n👥 Invitations: ${cnt}/3`
+            `🎉 Bonne nouvelle !
+
+${u.username ? "@" + u.username : "Un utilisateur"} vient de rejoindre via ton lien.
+
+📊 Progression : ${cnt}/3
+
+${remaining > 0
+  ? `Encore ${remaining} invitation${remaining > 1 ? "s" : ""} et tu débloques l'accès au groupe !`
+  : "🚀 Objectif atteint ! Tu peux maintenant accéder au groupe."}`
           );
         } catch {}
       }
@@ -1152,6 +1163,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
