@@ -4,7 +4,7 @@ import { Telegraf, Markup } from "telegraf";
 import { q, getSetting, setSetting } from "./db.js";
 import { makeRefCode, nowPlusMinutes, isDeletedUser, shareLink } from "./utils.js";
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const bot = new Telegraf(process.env.BOT_TOKEN); 
 
 // --------------------
 // ENV / Config
@@ -1155,6 +1155,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
