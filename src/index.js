@@ -397,7 +397,7 @@ ${refLink}
 
 ✅ Invitations validées : <b>${refs}/3</b>
 
-⚠️ Compte uniquement si la personne appuie sur Start.`;
+⚠️ Invite 3 personnes à rejoindre le groupe, puis actualise la page : ton accès sera débloqué.`;
 
   return upsertPanel(ctx, text, kbReferral(refLink));
 }
@@ -851,7 +851,7 @@ bot.start(async (ctx) => {
 
   // IMAGE DE BIENVENUE
   await ctx.replyWithPhoto(
-    "https://thothd.com/contents/videos_screenshots/264000/264173/preview.jpg",
+    "https://img.telemetr.io/c/2dIIta/5888598990193279412?ty=l",
   );
 
   return renderHomeUser(ctx, { forceNew: true });
@@ -1110,6 +1110,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
