@@ -406,9 +406,6 @@ async function renderReferral(ctx) {
 
   const text = `<b>👥 Inviter 3 personnes</b>
 
-Partage ce lien :
-${refLink}
-
 ✅ Invitations validées : <b>${refs}/3</b>
 
 ⚠️ Invite 3 personnes à rejoindre le groupe, puis actualise la page : ton accès sera débloqué.`;
@@ -1155,6 +1152,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
