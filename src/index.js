@@ -185,7 +185,9 @@ function kbHomeUser(eligible) {
 function kbReferral(refLink) {
   return Markup.inlineKeyboard([
     [Markup.button.url("📤 Partager mon lien", shareLink(refLink))],
-    [Markup.button.callback("🏠 Menu", "PAGE_HOME")],
+    [Markup.button.callback("📊 Suivre tes invitations", "REF_TRACK")],
+    [Markup.button.callback("🔄 Actualiser", "REF_REFRESH")],
+    [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
   ]);
 }
 
@@ -269,6 +271,18 @@ Envoie un message à tous les utilisateurs (ceux qui ont fait Start).`;
     ],
   ]);
   return upsertPanel(ctx, text, kb);
+}
+
+async function getReferralsList(tgId) {
+  const r = await q(
+    `select referred_tg_id, created_at
+     from referrals
+     where referrer_tg_id=$1
+     order by created_at asc`,
+    [tgId]
+  );
+
+  return r.rows;
 }
 
 // --------------------
@@ -864,6 +878,37 @@ bot.action("PAGE_HOME", async (ctx) => {
   return renderHomeUser(ctx);
 });
 
+bot.action("REF_TRACK", async (ctx) => {
+  await ctx.answerCbQuery();
+
+  const refs = await getReferralsList(ctx.from.id);
+
+  let text = `📊 <b>Suivi des invitations</b>\n\n`;
+
+  if (refs.length === 0) {
+    text += "Aucune invitation validée pour le moment.\n";
+  } else {
+    refs.forEach((r, i) => {
+      text += `${i + 1}️⃣ Utilisateur ${r.referred_tg_id} — rejoint ✅\n`;
+    });
+  }
+
+  const missing = 3 - refs.length;
+
+  if (missing > 0) {
+    text += `\n${missing} invitation(s) restante(s) ⏳`;
+  } else {
+    text += `\n🎉 Objectif atteint !`;
+  }
+
+  const kb = Markup.inlineKeyboard([
+    [Markup.button.callback("🔄 Actualiser", "REF_TRACK")],
+    [Markup.button.callback("🏠 Menu", "PAGE_HOME")]
+  ]);
+
+  return upsertPanel(ctx, text, kb);
+});
+
 bot.action("PAGE_REF", async (ctx) => {
   await ctx.answerCbQuery();
   if (isAdmin(ctx)) return renderAdminHome(ctx);
@@ -1110,6 +1155,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
