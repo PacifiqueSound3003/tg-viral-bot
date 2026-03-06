@@ -365,7 +365,7 @@ Bienvenue dans la communauté.`
 
 Ce groupe de LEAK  construit <b>par ses membres et pour ses membres</b>.
 
-🇫🇷 Réservé aux Francais uniquement 🇫🇷
+🇫🇷 Réservé aux Francais uniquement + 30 GB d'échange de contenus 🇫🇷
 
 Dans la plupart des communautés en ligne :
 90% des personnes restent passives
@@ -1155,6 +1155,7 @@ bot
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
