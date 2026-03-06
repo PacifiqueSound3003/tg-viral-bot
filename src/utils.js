@@ -19,6 +19,6 @@ export function isDeletedUser(u) {
 
 // Génère une URL de partage Telegram avec texte + lien
 export function shareLink(url) {
-  const text = `Rejoins-moi ici 👉 ${url}`;
+  const text = `Nouveau groupe d'échange 100% automatisé avec du contenu exclusif +30Gb de Leak👉 ${url}`;
   return `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
 }
